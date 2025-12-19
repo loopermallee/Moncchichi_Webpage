@@ -1,0 +1,8 @@
+{
+  "name": "Moncchichi Web Hub",
+  "description": "Premium HUD Interface for G1 Glasses and AI Assistance",
+  "requestFramePermissions": [
+    "microphone",
+    "geolocation"
+  ]
+}
