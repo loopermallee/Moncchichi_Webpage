@@ -119,10 +119,11 @@ class AiService {
     }
 
     public async getTransitDuration(origin: string, destination: string): Promise<number | null> {
-        if (!process.env.API_KEY) return null;
+        const apiKey = import.meta.env.VITE_API_KEY;
+        if (!apiKey) return null;
 
         try {
-            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+            const ai = new GoogleGenAI({ apiKey });
             // Maps grounding and tools are only supported in 2.5 series
             const prompt = `Calculate the current travel time by public transport (Bus) from "${origin}" to "${destination}" in Singapore. Return a JSON object with a single property "minutes" (number).`;
             
@@ -155,11 +156,12 @@ class AiService {
     }
 
     public async generateMultimodal(options: MultimodalOptions): Promise<AiResponse> {
-        if (!process.env.API_KEY) return { text: "API Key Missing", provider: 'GEMINI', error: "No Gemini Key" };
+        const apiKey = import.meta.env.VITE_API_KEY;
+        if (!apiKey) return { text: "API Key Missing", provider: 'GEMINI', error: "No Gemini Key" };
 
         try {
-            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-            const modelName = 'gemini-3-flash-preview'; 
+            const ai = new GoogleGenAI({ apiKey });
+            const modelName = 'gemini-3-flash-preview';
             
             mockService.emitLog('AI', 'INFO', `[Gemini Multi] Preparing payload...`);
 
@@ -179,11 +181,11 @@ class AiService {
             else if (options.fileBlob) {
                 if (options.fileBlob.size > INLINE_DATA_LIMIT) {
                     mockService.emitLog('AI', 'INFO', `[Gemini Multi] File size ${(options.fileBlob.size/1024/1024).toFixed(1)}MB > 20MB. cutting into chunks...`);
-                    
+
                     const uploadedFile = await this.uploadFileInChunks(
-                        process.env.API_KEY, 
-                        options.fileBlob, 
-                        options.mimeType, 
+                        apiKey,
+                        options.fileBlob,
+                        options.mimeType,
                         options.onProgress
                     );
                     
@@ -363,10 +365,11 @@ class AiService {
     }
 
     private async generateGemini(options: GenerationOptions): Promise<AiResponse> {
-        if (!process.env.API_KEY) return { text: "No Gemini Key", provider: 'GEMINI', error: "Missing Key" };
+        const apiKey = import.meta.env.VITE_API_KEY;
+        if (!apiKey) return { text: "No Gemini Key", provider: 'GEMINI', error: "Missing Key" };
 
         try {
-            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+            const ai = new GoogleGenAI({ apiKey });
             // Fix: Maps grounding is only supported in 2.5 series
             let modelName = options.model || 'gemini-3-flash-preview';
             if (options.useMaps) modelName = 'gemini-2.5-flash';

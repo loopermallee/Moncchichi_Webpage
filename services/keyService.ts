@@ -33,10 +33,11 @@ class KeyService {
         }
 
         // 2. Fallback to Environment Variables (if not set in storage/defaults)
-        if (!this.keys.GEMINI) this.keys.GEMINI = (process as any).env?.API_KEY || '';
-        if (!this.keys.OPENAI) this.keys.OPENAI = (process as any).env?.OPENAI_API_KEY || '';
-        if (!this.keys.LTA) this.keys.LTA = (process as any).env?.LTA_API_KEY || '';
-        if (!this.keys.NLB) this.keys.NLB = (process as any).env?.NLB_API_KEY || '';
+        const env = import.meta.env;
+        if (!this.keys.GEMINI) this.keys.GEMINI = env.VITE_API_KEY || '';
+        if (!this.keys.OPENAI) this.keys.OPENAI = env.VITE_OPENAI_API_KEY || '';
+        if (!this.keys.LTA) this.keys.LTA = env.VITE_LTA_API_KEY || '';
+        if (!this.keys.NLB) this.keys.NLB = env.VITE_NLB_API_KEY || '';
     }
 
     public get(id: ApiId): string {
