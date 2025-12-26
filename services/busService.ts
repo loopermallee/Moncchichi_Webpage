@@ -1,5 +1,5 @@
 
-import { fetchLTA } from '../src/services/serverApi';
+import { fetchLTA } from '../src/services/proxyApi';
 import { mockService } from './mockService';
 import { storageService } from './storageService';
 import { CHEEAUN_SERVICES, CHEEAUN_STOPS, CHEEAUN_ROUTES } from './cheeaunOfflineDb';
@@ -902,7 +902,7 @@ class BusService {
           try { await this.fetchAllBusStops(); } catch(e) {}
       }
 
-      const data = await fetchLTA('BusRoutes', { query: { ServiceNo: cleanNo } });
+      const data = await fetchLTA('BusRoutes', { query: { ServiceNo: cleanNo } }, keyService.get('LTA'));
       // STRIOT FILTER: LTA API might ignore ServiceNo param if empty or malformed
       const items = (data.value || []).filter((i: any) => i.ServiceNo === cleanNo);
       
@@ -1370,7 +1370,7 @@ class BusService {
       let hasMore = true;
 
       while (hasMore) {
-          const data = await fetchLTA('BusStops', { query: { $skip: skip } });
+          const data = await fetchLTA('BusStops', { query: { $skip: skip } }, keyService.get('LTA'));
           const items = data.value || [];
           
           stops = stops.concat(items.map((i: any) => ({
@@ -1678,7 +1678,7 @@ class BusService {
 
       // 1. Try LTA if Key exists
       try {
-          const data = await fetchLTA('BusArrivalv2', { query: { BusStopCode: stopId } });
+          const data = await fetchLTA('BusArrivalv2', { query: { BusStopCode: stopId } }, keyService.get('LTA'));
           if (data.Services) {
               services = data.Services.map((s: any) => ({
                   serviceNo: s.ServiceNo,
