@@ -9,7 +9,7 @@ import { permissionService } from './services/permissionService';
 import { errorService } from './services/errorService'; 
 import { transportService } from './services/transportService'; 
 import { getWeather, WeatherData } from './services/weatherService';
-import { weaverService } from './services/weaverService'; // Import WeaverService
+import { weaverService } from './services/weaverService'; 
 import ConsoleLog from './components/ConsoleLog';
 import Dashboard from './views/Dashboard';
 import Assistant from './views/Assistant';
@@ -38,8 +38,9 @@ function App() {
   const [weather, setWeather] = useState<WeatherData | null>(null);
   
   const menuRef = useRef<HTMLDivElement>(null);
-  // Track last seen active job to detect new completions
-  const lastWeaverJobStatus = useRef<string | null>(null);
+  
+  // Ref to track IDs of jobs that have already triggered a completion notification
+  const notifiedJobIds = useRef<Set<string>>(new Set());
 
   // Global Error & Console Traps (Run Once)
   useEffect(() => {
@@ -72,7 +73,6 @@ function App() {
           mockService.emitLog('SYSTEM', 'INFO', safeStringify(args));
       };
 
-      // Also capture standard logs and debugs for "Process" visibility
       console.log = (...args) => {
           originalLog(...args);
           mockService.emitLog('SYSTEM', 'INFO', safeStringify(args));
@@ -129,21 +129,18 @@ function App() {
     }
 
     // Subscribe to logs
-    // NOTE: mockService now replays history, so we don't need manual initialization here
     const unsubLogs = mockService.subscribeToLogs((entry) => {
       setLogs(prev => {
-          // Prevent duplicates during strict mode double-mount or replay
           if (prev.some(l => l.id === entry.id)) return prev;
           return [...prev, entry].slice(-500);
       });
     });
 
-    // Subscribe to connection state for Toasts and UI updates
+    // Subscribe to connection state
     let lastState = mockService.getConnectionState();
     const unsubConn = mockService.subscribeToConnection((state) => {
         setIsConnected(state === ConnectionState.CONNECTED);
         
-        // Trigger Toasts on state change
         if (state === ConnectionState.CONNECTED && lastState !== ConnectionState.CONNECTED) {
             setToast({ message: "Connected to G1 Glasses", type: "success" });
             soundService.playClick();
@@ -155,42 +152,45 @@ function App() {
         lastState = state;
     });
 
-    // Subscribe to AI Error Service for Quirky Toasts
+    // Subscribe to AI Error Service
     const unsubErrors = errorService.subscribe((error) => {
-        // Play a notification sound?
         soundService.playInteraction();
         setToast({ message: error.quirkyMessage, type: 'ai' });
     });
 
     // Subscribe to Weaver Service for background job notifications
     const unsubWeaver = weaverService.subscribe(() => {
-        const job = weaverService.getActiveJob();
-        if (job) {
-            // Check if job just completed and user is NOT on Weaver screen
-            if (job.status === 'COMPLETE' && lastWeaverJobStatus.current !== 'COMPLETE') {
+        const activeJobs = weaverService.getActiveJobs();
+        
+        activeJobs.forEach(job => {
+            // If a job is COMPLETE and we haven't notified the user yet
+            if (job.status === 'COMPLETE' && !notifiedJobIds.current.has(job.id)) {
+                notifiedJobIds.current.add(job.id);
+                
+                // Only show toast if user is NOT currently looking at the weaver screen
                 if (currentView !== 'quantum-weaver') {
                     setToast({ message: `Analysis Complete: ${job.fileName}`, type: 'ai' });
                     soundService.playQuestComplete();
                 }
             }
-            lastWeaverJobStatus.current = job.status;
-        } else {
-            lastWeaverJobStatus.current = null;
+        });
+
+        // Cleanup: Remove old job IDs from notified set if they are no longer in activeJobs
+        // This prevents the set from growing indefinitely in very long sessions
+        if (notifiedJobIds.current.size > 50) {
+            const activeIds = new Set(activeJobs.map(j => j.id));
+            notifiedJobIds.current.forEach(id => {
+                if (!activeIds.has(id)) notifiedJobIds.current.delete(id);
+            });
         }
     });
 
-    // Check Permissions Sync on load
     permissionService.syncWithBrowser();
-
-    // Fetch Weather for basic widget state (optional usage)
     getWeather().then(setWeather);
 
-    // Add global click listener for UI sounds
     const handleClick = (e: MouseEvent) => {
         const target = e.target as HTMLElement;
-        // Check if clicked element or parent is a button/link
         if (target.closest('button') || target.closest('a') || target.closest('input[type="range"]') || target.closest('input[type="checkbox"]')) {
-            // We handle specific sounds in handlers, general fallback can be here if needed
             if (!target.closest('nav')) {
                  soundService.playClick();
             }
@@ -205,26 +205,23 @@ function App() {
         unsubWeaver();
         window.removeEventListener('click', handleClick);
     };
-  }, [currentView]); // Re-bind effect when view changes to update closure
+  }, [currentView]); 
   
-  // Background Polling for Transport Alerts (Global Scope)
+  // Background Polling for Transport Alerts
   useEffect(() => {
       const pollInterval = setInterval(async () => {
-          // Only poll if NOT on the transport view (as it has its own live data logic)
           if (currentView !== 'transport') {
               const alerts = await transportService.pollWatchedBuses();
               if (alerts.length > 0) {
-                  // Only show the first alert to prevent spam
                   setToast({ message: alerts[0], type: 'info' });
                   soundService.playAlert();
               }
           }
-      }, 60000); // Check every minute
+      }, 60000); 
       
       return () => clearInterval(pollInterval);
   }, [currentView]);
 
-  // Close menu when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
@@ -277,10 +274,8 @@ function App() {
   return (
     <div className="flex flex-col h-screen bg-moncchichi-bg text-moncchichi-text selection:bg-moncchichi-accent selection:text-moncchichi-bg overflow-hidden">
       
-      {/* Toast Notification */}
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
 
-      {/* Mobile Header - Increased z-index to [100] to appear above view headers */}
       <header className="h-14 px-4 bg-moncchichi-surface border-b border-moncchichi-border flex items-center justify-between shrink-0 z-[100] relative shadow-sm">
         <div className="flex items-center gap-3">
           <div className="font-bold text-lg tracking-tighter uppercase text-moncchichi-accent select-none">Moncchichi</div>
@@ -293,7 +288,6 @@ function App() {
              </span>
            </div>
            
-           {/* Overflow Menu */}
            <div className="relative" ref={menuRef}>
              <button 
                onClick={() => {
@@ -396,7 +390,7 @@ function App() {
                  
                  <div className="h-px bg-moncchichi-border my-1"></div>
                  <div className="px-4 py-2 text-[10px] text-moncchichi-textSec text-center">
-                   v1.7.1 (NoGoblin)
+                   v1.7.2 (QueueFix)
                  </div>
                </div>
              )}
@@ -404,7 +398,6 @@ function App() {
         </div>
       </header>
 
-      {/* Main Content */}
       <main className="flex-1 overflow-hidden relative w-full bg-moncchichi-bg">
         <div className="absolute inset-0 overflow-y-auto scrollbar-hide overscroll-y-contain">
           <div className="animate-in fade-in slide-in-from-bottom-2 duration-300 h-full">
@@ -426,7 +419,6 @@ function App() {
         </div>
       </main>
 
-      {/* Bottom Navigation */}
       <nav className="h-16 bg-moncchichi-surface border-t border-moncchichi-border flex justify-between items-stretch shrink-0 pb-safe shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] z-30">
         <NavItem id="dashboard" icon={ICONS.Dashboard} label="Hub" />
         <NavItem id="assistant" icon={ICONS.Assistant} label="Assistant" />
