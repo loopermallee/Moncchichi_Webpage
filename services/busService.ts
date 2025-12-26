@@ -1,5 +1,6 @@
 
 import { fetchLTA } from '../src/services/proxyApi';
+import { keyService } from './keyService';
 import { mockService } from './mockService';
 import { storageService } from './storageService';
 import { CHEEAUN_SERVICES, CHEEAUN_STOPS, CHEEAUN_ROUTES } from './cheeaunOfflineDb';

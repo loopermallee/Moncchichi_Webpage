@@ -367,12 +367,17 @@ class AiService {
                 try {
                     const ai = new GoogleGenAI({ apiKey: manualKey });
                     const modelName = options.model || 'gemini-3-flash-preview';
-                    const model = ai.getGenerativeModel({ model: modelName, systemInstruction: options.systemInstruction });
-                    const result = await model.generateContent({
+                    const result = await ai.models.generateContent({
+                        model: modelName,
                         contents: [{ role: 'user', parts: [{ text: options.userPrompt }]}],
-                        generationConfig: { temperature: options.temperature }
+                        config: {
+                            temperature: options.temperature,
+                            systemInstruction: options.systemInstruction
+                                ? { role: 'system', parts: [{ text: options.systemInstruction }] }
+                                : undefined,
+                        },
                     });
-                    const text = result.response?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+                    const text = (result as any)?.text || '';
                     if (text) return { text, provider: 'GEMINI' };
                 } catch (manualErr: any) {
                     mockService.emitLog('AI', 'ERROR', `Gemini manual key failed: ${manualErr?.message}`);
