@@ -1,5 +1,5 @@
-import type { VercelRequest, VercelResponse } from '@vercel/node';
+type VercelResponse = { status: (code: number) => { json: (body: any) => void } };
 
-export default function handler(_req: VercelRequest, res: VercelResponse) {
+export default function handler(_req: unknown, res: VercelResponse) {
     res.status(200).json({ ok: true, ts: Date.now() });
 }
