@@ -22,3 +22,21 @@ View your app in AI Studio: https://ai.studio/apps/drive/16PXyCvDZ4NAV3FmXXPjjTb
 ## Environment Variables
 
 Populate the variables in [.env.example](.env.example) when running locally. Set the same values in your Vercel Environment Variables for both Production and Preview deployments.
+
+### Server-only
+
+- `OPENAI_API_KEY` (used by `/api/openai` – do **not** prefix with `VITE_`)
+
+### Public/client
+
+- `VITE_API_KEY` (Gemini)
+- `VITE_OPENAI_API_KEY` (only if you still want to allow user-provided keys in the browser)
+
+## API Routes
+
+These serverless functions run on Vercel:
+
+- `GET /api/health` – simple health check returning `{ ok: true, ts: <timestamp> }`.
+- `POST /api/openai` – proxies OpenAI text generation using `OPENAI_API_KEY` on the server. Send `{ "prompt": "..." }` and receive `{ "text": "..." }`.
+
+> Keep your OpenAI secret key on the server. Do **not** expose it via `VITE_*` environment variables.
