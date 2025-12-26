@@ -1,5 +1,5 @@
 import { GoogleGenAI } from "@google/genai";
-import { callGemini, callOpenAI } from "../src/services/serverApi";
+import { callGemini, callOpenAI } from "../src/services/proxyApi";
 import { keyService } from "./keyService";
 import { mockService } from "./mockService";
 import { storageService } from "./storageService";
@@ -361,6 +361,29 @@ class AiService {
             return { text: (response as any)?.text || "", provider: 'GEMINI' };
         } catch (e: any) {
             mockService.emitLog('AI', 'ERROR', `Gemini Error: ${e.message}`);
+
+            const manualKey = keyService.get('GEMINI');
+            if (manualKey) {
+                try {
+                    const ai = new GoogleGenAI({ apiKey: manualKey });
+                    const modelName = options.model || 'gemini-3-flash-preview';
+                    const result = await ai.models.generateContent({
+                        model: modelName,
+                        contents: [{ role: 'user', parts: [{ text: options.userPrompt }]}],
+                        config: {
+                            temperature: options.temperature,
+                            systemInstruction: options.systemInstruction
+                                ? { role: 'system', parts: [{ text: options.systemInstruction }] }
+                                : undefined,
+                        },
+                    });
+                    const text = (result as any)?.text || '';
+                    if (text) return { text, provider: 'GEMINI' };
+                } catch (manualErr: any) {
+                    mockService.emitLog('AI', 'ERROR', `Gemini manual key failed: ${manualErr?.message}`);
+                }
+            }
+
             return { text: "Error", provider: 'GEMINI', error: e.message };
         }
     }
@@ -380,6 +403,37 @@ class AiService {
             return { text: (data as any)?.text || "", provider: 'OPENAI' };
         } catch (e: any) {
             mockService.emitLog('AI', 'ERROR', `OpenAI Error: ${e.message}`);
+
+            const manualKey = keyService.get('OPENAI');
+            if (manualKey) {
+                try {
+                    const messages: any[] = [];
+                    if (options.systemInstruction) messages.push({ role: 'system', content: options.systemInstruction });
+                    messages.push({ role: 'user', content: options.userPrompt });
+
+                    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${manualKey}`
+                        },
+                        body: JSON.stringify({
+                            model: options.model || 'gpt-4o-mini',
+                            messages,
+                            temperature: options.temperature ?? 0.7
+                        })
+                    });
+
+                    if (response.ok) {
+                        const data = await response.json();
+                        const text = data?.choices?.[0]?.message?.content;
+                        if (text) return { text, provider: 'OPENAI' };
+                    }
+                } catch (manualErr: any) {
+                    mockService.emitLog('AI', 'ERROR', `OpenAI manual key failed: ${manualErr?.message}`);
+                }
+            }
+
             return { text: "Error", provider: 'OPENAI', error: e.message };
         }
     }

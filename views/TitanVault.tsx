@@ -6,7 +6,7 @@ import { aiService } from '../services/aiService';
 import { transportService } from '../services/transportService';
 import { nlbService } from '../services/nlbService';
 import { realtimeWeatherService } from '../services/realtimeWeatherService';
-import { Key, Eye, EyeOff, CheckCircle, XCircle, Loader2, Sparkles, Server, BookOpen, Bus, CloudLightning, Activity, Smartphone, Map as MapIcon, TrendingUp, BarChart } from 'lucide-react';
+import { Key, Eye, EyeOff, CheckCircle, XCircle, Loader2, Sparkles, Server, BookOpen, Bus, CloudLightning, Activity, Smartphone, Map as MapIcon, TrendingUp, BarChart, AlertTriangle, Clock3 } from 'lucide-react';
 
 interface KeyConfig {
     id: ApiId;
@@ -92,6 +92,14 @@ const CONFIGS: KeyConfig[] = [
     }
 ];
 
+type HealthId = 'OPENAI' | 'GEMINI' | 'LTA' | 'NLB' | 'GOOGLE_MAPS';
+type HealthStatus = {
+    status: 'IDLE' | 'OK' | 'FAIL' | 'NOT_CONFIGURED';
+    message?: string;
+    checkedAt?: string;
+    testing?: boolean;
+};
+
 const TitanVault: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     // Fix: Initialize values with all required keys of ApiId to match Record<ApiId, string>
     const [values, setValues] = useState<Record<ApiId, string>>({ 
@@ -109,6 +117,13 @@ const TitanVault: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     const [visible, setVisible] = useState<Partial<Record<ApiId, boolean>>>({});
     // Fix: Changed statuses state to Partial<Record<ApiId, ...>> to correctly handle {} initialization
     const [statuses, setStatuses] = useState<Partial<Record<ApiId, 'IDLE' | 'TESTING' | 'VALID' | 'INVALID'>>>({});
+    const [health, setHealth] = useState<Record<HealthId, HealthStatus>>({
+        OPENAI: { status: 'IDLE' },
+        GEMINI: { status: 'IDLE' },
+        LTA: { status: 'IDLE' },
+        NLB: { status: 'IDLE' },
+        GOOGLE_MAPS: { status: 'IDLE' }
+    });
 
     useEffect(() => {
         const loaded: any = {};
@@ -118,9 +133,89 @@ const TitanVault: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         setValues(loaded);
     }, []);
 
+    const manualKeyMap: Record<HealthId, ApiId[]> = {
+        OPENAI: ['OPENAI'],
+        GEMINI: ['GEMINI'],
+        LTA: ['LTA'],
+        NLB: ['NLB', 'NLB_APP'],
+        GOOGLE_MAPS: ['GOOGLE_MAPS']
+    };
+
+    const updateHealth = (id: HealthId, partial: Partial<HealthStatus>) => {
+        setHealth(prev => ({ ...prev, [id]: { ...prev[id], ...partial } }));
+    };
+
+    const ensureBaseHealth = async () => {
+        try {
+            const res = await fetch('/api/health');
+            const data = await res.json().catch(() => ({}));
+            return res.ok && data?.ok !== false;
+        } catch (e) {
+            return false;
+        }
+    };
+
+    const runHealthCheck = async (id: HealthId) => {
+        updateHealth(id, { testing: true });
+        const checkedAt = new Date().toISOString();
+        try {
+            if (id !== 'GOOGLE_MAPS') {
+                const platformOk = await ensureBaseHealth();
+                if (!platformOk) throw new Error('Platform health endpoint failed');
+            }
+
+            let ok = false;
+            let message: string | undefined;
+
+            if (id === 'LTA') {
+                const res = await fetch('/api/ltaHealth');
+                const data = await res.json().catch(() => ({}));
+                ok = res.ok && data?.ok !== false;
+                message = data?.reason;
+            } else if (id === 'NLB') {
+                const res = await fetch('/api/nlbHealth');
+                const data = await res.json().catch(() => ({}));
+                ok = res.ok && data?.ok !== false;
+                message = data?.reason;
+            } else if (id === 'OPENAI') {
+                const res = await fetch('/api/openai', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt: 'ping' }) });
+                ok = res.ok;
+                if (!res.ok) message = 'Proxy call failed';
+            } else if (id === 'GEMINI') {
+                const res = await fetch('/api/gemini', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt: 'ping' }) });
+                ok = res.ok;
+                if (!res.ok) message = 'Proxy call failed';
+            } else if (id === 'GOOGLE_MAPS') {
+                ok = !!values.GOOGLE_MAPS;
+                message = ok ? undefined : 'No client key set';
+            }
+
+            const hasManualKey = manualKeyMap[id].every(key => values[key]);
+            const notConfigured = (!ok && message?.toLowerCase().includes('missing') && !hasManualKey) || (!ok && id === 'GOOGLE_MAPS' && !values.GOOGLE_MAPS);
+
+            updateHealth(id, { status: ok ? 'OK' : (notConfigured ? 'NOT_CONFIGURED' : 'FAIL'), message, checkedAt, testing: false });
+        } catch (e: any) {
+            updateHealth(id, { status: 'FAIL', message: e?.message || 'Unable to reach service', checkedAt, testing: false });
+        }
+    };
+
+    const handleTestAll = async () => {
+        for (const id of Object.keys(manualKeyMap) as HealthId[]) {
+            await runHealthCheck(id);
+        }
+    };
+
     const handleSave = (id: ApiId) => {
         keyService.set(id, values[id]);
         setStatuses(prev => ({ ...prev, [id]: 'IDLE' }));
+    };
+
+    const renderStatus = (state: HealthStatus) => {
+        if (state.testing) return <Loader2 size={16} className="animate-spin text-moncchichi-accent" />;
+        if (state.status === 'OK') return <CheckCircle size={16} className="text-moncchichi-success" />;
+        if (state.status === 'NOT_CONFIGURED') return <AlertTriangle size={16} className="text-yellow-400" />;
+        if (state.status === 'FAIL') return <XCircle size={16} className="text-moncchichi-error" />;
+        return <Clock3 size={16} className="text-moncchichi-textSec" />;
     };
 
     const handleTest = async (id: ApiId) => {
@@ -189,13 +284,85 @@ const TitanVault: React.FC<{ onBack: () => void }> = ({ onBack }) => {
             </div>
 
             <div className="flex-1 overflow-y-auto p-4 space-y-6">
+                <div className="bg-moncchichi-surface border border-moncchichi-border rounded-xl p-4 shadow-sm">
+                    <div className="flex items-center justify-between gap-3 mb-3">
+                        <div>
+                            <h3 className="text-sm font-bold text-moncchichi-text">Titan's Vault Health</h3>
+                            <p className="text-[11px] text-moncchichi-textSec">Proxy status for each API. Manual keys are stored locally and only used if proxies fail.</p>
+                        </div>
+                        <button
+                            onClick={handleTestAll}
+                            className="text-xs font-bold px-3 py-1.5 rounded-lg border border-moncchichi-border text-moncchichi-text hover:bg-moncchichi-surfaceAlt transition-all"
+                        >
+                            <Activity size={14} /> Test All
+                        </button>
+                    </div>
+                    <div className="grid grid-cols-1 gap-3">
+                        {(Object.keys(manualKeyMap) as HealthId[]).map(id => {
+                            const state = health[id];
+                            const label = id === 'GOOGLE_MAPS' ? 'Google Maps' : id === 'LTA' ? 'LTA Proxy' : id === 'NLB' ? 'NLB Proxy' : `${id === 'OPENAI' ? 'OpenAI' : 'Gemini'} Proxy`;
+                            return (
+                                <div key={id} className="flex items-start justify-between gap-3 p-3 rounded-lg border border-moncchichi-border bg-moncchichi-surfaceAlt/40">
+                                    <div className="flex items-start gap-3 flex-1">
+                                        <div className="mt-0.5">
+                                            {renderStatus(state)}
+                                        </div>
+                                        <div className="flex-1">
+                                            <div className="text-sm font-semibold text-moncchichi-text">{label}</div>
+                                            <div className="text-[11px] text-moncchichi-textSec flex items-center gap-2">
+                                                <span>{state.status === 'IDLE' ? 'Not tested yet' : state.status === 'OK' ? 'Proxy reachable' : state.status === 'NOT_CONFIGURED' ? 'Not configured' : 'Proxy failed'}</span>
+                                                {state.checkedAt && <span className="text-[10px] text-moncchichi-textSec/80">Last checked: {new Date(state.checkedAt).toLocaleTimeString()}</span>}
+                                            </div>
+                                            {state.message && <div className="text-[11px] text-moncchichi-error mt-1">{state.message}</div>}
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <button
+                                            onClick={() => runHealthCheck(id)}
+                                            className="text-[11px] px-3 py-1.5 rounded-lg border border-moncchichi-border text-moncchichi-text hover:bg-moncchichi-surface transition-all disabled:opacity-50"
+                                            disabled={state.testing}
+                                        >
+                                            {state.testing ? 'Testing...' : 'Test'}
+                                        </button>
+                                        {(state.status === 'FAIL' || state.status === 'NOT_CONFIGURED') && (
+                                            <button
+                                                onClick={() => {
+                                                    const ids = manualKeyMap[id];
+                                                    const next: Partial<Record<ApiId, boolean>> = { ...visible };
+                                                    ids.forEach(k => next[k] = true);
+                                                    setVisible(next);
+                                                }}
+                                                className="text-[11px] px-3 py-1.5 rounded-lg bg-moncchichi-surfaceAlt border border-moncchichi-border text-moncchichi-text hover:border-moncchichi-accent hover:text-moncchichi-accent transition-all"
+                                            >
+                                                Set manual key
+                                            </button>
+                                        )}
+                                        {manualKeyMap[id].some(k => values[k]) && (
+                                            <button
+                                                onClick={() => {
+                                                    const nextValues = { ...values } as Record<ApiId, string>;
+                                                    manualKeyMap[id].forEach(key => { nextValues[key] = ''; keyService.set(key, ''); });
+                                                    setValues(nextValues);
+                                                }}
+                                                className="text-[11px] px-3 py-1.5 rounded-lg border border-moncchichi-border text-moncchichi-text hover:bg-moncchichi-surface transition-all"
+                                            >
+                                                Clear manual key
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+
                 <div className="bg-moncchichi-surfaceAlt/30 border border-moncchichi-border p-4 rounded-xl flex items-start gap-3">
                     <div className="p-2 bg-moncchichi-accent/10 rounded-full text-moncchichi-accent shrink-0">
                         <Key size={20} />
                     </div>
                     <div className="text-sm text-moncchichi-textSec leading-relaxed">
                         <span className="font-bold text-moncchichi-text block mb-1">Secure Storage</span>
-                        Keys are stored locally on your device. They are never sent to our servers.
+                        Keys are stored locally on your device. They are never sent to our servers. Manual keys act as a fallback when proxies are unavailable and remain on this device.
                     </div>
                 </div>
 

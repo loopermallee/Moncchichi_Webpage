@@ -1,7 +1,8 @@
 
-import { fetchNLB } from '../src/services/serverApi';
+import { fetchNLB } from '../src/services/proxyApi';
 import { mockService } from './mockService';
 import { Book } from './bookService'; // Import Book type
+import { keyService } from './keyService';
 
 // --- CONFIG ---
 const URLS = {
@@ -77,7 +78,7 @@ class NlbService {
         const displayUrl = `${url.hostname}${url.pathname}`;
 
         mockService.emitLog('NLB', 'INFO', `Requesting: ${displayUrl}`);
-        return fetchNLB(targetUrl);
+        return fetchNLB(targetUrl, { apiKey: keyService.get('NLB'), appCode: keyService.get('NLB_APP') });
     }
 
     // --- API METHODS ---

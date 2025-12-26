@@ -1,6 +1,7 @@
 
 import { mockService } from './mockService';
 import { keyService } from './keyService';
+import { fetchLTA } from '../src/services/proxyApi';
 
 // --- Types ---
 
@@ -40,11 +41,6 @@ export interface StationAccessibility {
     liftMaintenance: boolean;
     details?: string;
 }
-
-// --- Constants ---
-
-const PROXY_URL = 'https://corsproxy.io/?'; 
-const LTA_BASE_URL = 'https://datamall2.mytransport.sg/ltaodataservice';
 
 const MRT_DATA: MRTLine[] = [
     {
@@ -272,44 +268,37 @@ class MrtService {
         if (!apiKey) return null;
 
         try {
-            const proxyUrl = `${PROXY_URL}${encodeURIComponent(`${LTA_BASE_URL}/TrainServiceAlerts`)}`;
-            const res = await fetch(proxyUrl, {
-                headers: { 'AccountKey': apiKey, 'accept': 'application/json' }
-            });
-
-            if (res.ok) {
-                const data = await res.json();
-                if (data.value && data.value.Status === 1) {
-                    return []; // Normal service
-                }
-                // Handle disruption format (often nested in AffectedSegments or Message)
-                // LTA API returns Status 2 for disruption
-                if (data.value && data.value.Status === 2) {
-                    // Normalize alert structure
-                    const alerts: TrainServiceAlert[] = [];
-                    if (data.value.AffectedSegments) {
-                        data.value.AffectedSegments.forEach((seg: any) => {
-                            alerts.push({
-                                Status: 2,
-                                Line: seg.Line,
-                                Direction: seg.Direction,
-                                Message: data.value.Message || "Service Disruption"
-                            });
-                        });
-                    }
-                    // Fallback if only message
-                    if (alerts.length === 0 && data.value.Message) {
+            const data = await fetchLTA('TrainServiceAlerts', {}, apiKey);
+            if (data.value && data.value.Status === 1) {
+                return []; // Normal service
+            }
+            // Handle disruption format (often nested in AffectedSegments or Message)
+            // LTA API returns Status 2 for disruption
+            if (data.value && data.value.Status === 2) {
+                // Normalize alert structure
+                const alerts: TrainServiceAlert[] = [];
+                if (data.value.AffectedSegments) {
+                    data.value.AffectedSegments.forEach((seg: any) => {
                         alerts.push({
                             Status: 2,
-                            Line: "All",
-                            Direction: "Both",
-                            Message: data.value.Message
+                            Line: seg.Line,
+                            Direction: seg.Direction,
+                            Message: data.value.Message || "Service Disruption"
                         });
-                    }
-                    return alerts;
+                    });
                 }
-                return [];
+                // Fallback if only message
+                if (alerts.length === 0 && data.value.Message) {
+                    alerts.push({
+                        Status: 2,
+                        Line: "All",
+                        Direction: "Both",
+                        Message: data.value.Message
+                    });
+                }
+                return alerts;
             }
+            return [];
         } catch (e) {
             console.warn("MRT Alerts failed", e);
         }
