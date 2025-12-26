@@ -1,4 +1,6 @@
 import { GoogleGenAI } from "@google/genai";
+import { callGemini, callOpenAI } from "../src/services/serverApi";
+import { keyService } from "./keyService";
 import { mockService } from "./mockService";
 import { storageService } from "./storageService";
 
@@ -116,25 +118,12 @@ class AiService {
     }
 
     public async getTransitDuration(origin: string, destination: string): Promise<number | null> {
-        const apiKey = import.meta.env.VITE_API_KEY;
-        if (!apiKey) return null;
-
         try {
-            const ai = new GoogleGenAI({ apiKey });
-            // Maps grounding and tools are only supported in 2.5 series
             const prompt = `Calculate the current travel time by public transport (Bus) from "${origin}" to "${destination}" in Singapore. Return a JSON object with a single property "minutes" (number).`;
-            
-            const response = await ai.models.generateContent({
-                model: 'gemini-2.5-flash',
-                contents: prompt,
-                config: {
-                     // Fix: responseMimeType is not allowed when using the googleMaps tool
-                     tools: [{ googleMaps: {} }]
-                }
-            });
-
-            if (response.text) {
-                const json = JSON.parse(response.text);
+            const response = await callGemini(prompt, { model: 'gemini-1.5-flash', temperature: 0 });
+            const text = (response as any)?.text || '';
+            if (text) {
+                const json = JSON.parse(text);
                 return typeof json.minutes === 'number' ? json.minutes : null;
             }
             return null;
@@ -153,7 +142,7 @@ class AiService {
     }
 
     public async generateMultimodal(options: MultimodalOptions): Promise<AiResponse> {
-        const apiKey = import.meta.env.VITE_API_KEY;
+        const apiKey = keyService.get('GEMINI');
         if (!apiKey) return { text: "API Key Missing", provider: 'GEMINI', error: "No Gemini Key" };
 
         try {
@@ -362,31 +351,14 @@ class AiService {
     }
 
     private async generateGemini(options: GenerationOptions): Promise<AiResponse> {
-        const apiKey = import.meta.env.VITE_API_KEY;
-        if (!apiKey) return { text: "No Gemini Key", provider: 'GEMINI', error: "Missing Key" };
-
         try {
-            const ai = new GoogleGenAI({ apiKey });
-            // Fix: Maps grounding is only supported in 2.5 series
-            let modelName = options.model || 'gemini-3-flash-preview';
-            if (options.useMaps) modelName = 'gemini-2.5-flash';
-
-            const config: any = { temperature: options.temperature ?? 0.7 };
-            if (options.systemInstruction) config.systemInstruction = options.systemInstruction;
-            
-            const tools: any[] = [];
-            if (options.useSearch) tools.push({ googleSearch: {} });
-            if (options.useMaps) tools.push({ googleMaps: {} });
-            
-            if (tools.length > 0) config.tools = tools;
-
             mockService.emitLog('AI', 'INFO', `[Gemini] Requesting...`);
-            const response = await ai.models.generateContent({
-                model: modelName,
-                contents: options.userPrompt,
-                config: config
+            const response = await callGemini(options.userPrompt, {
+                model: options.model || (options.useMaps ? 'gemini-2.5-flash' : 'gemini-3-flash-preview'),
+                temperature: options.temperature,
+                systemInstruction: options.systemInstruction
             });
-            return { text: response.text || "", provider: 'GEMINI' };
+            return { text: (response as any)?.text || "", provider: 'GEMINI' };
         } catch (e: any) {
             mockService.emitLog('AI', 'ERROR', `Gemini Error: ${e.message}`);
             return { text: "Error", provider: 'GEMINI', error: e.message };
@@ -400,15 +372,12 @@ class AiService {
                 ? `${options.systemInstruction}\n\n${options.userPrompt}`
                 : options.userPrompt;
 
-            const res = await fetch('/api/openai', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ prompt })
+            const data = await callOpenAI(prompt, {
+                model: options.model,
+                temperature: options.temperature,
+                systemInstruction: options.systemInstruction
             });
-
-            if (!res.ok) throw new Error(`Status ${res.status}`);
-            const data = await res.json();
-            return { text: data.text || "", provider: 'OPENAI' };
+            return { text: (data as any)?.text || "", provider: 'OPENAI' };
         } catch (e: any) {
             mockService.emitLog('AI', 'ERROR', `OpenAI Error: ${e.message}`);
             return { text: "Error", provider: 'OPENAI', error: e.message };
