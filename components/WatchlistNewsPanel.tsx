@@ -88,7 +88,7 @@ const WatchlistNewsPanel: React.FC<Props> = ({ className }) => {
                         <Clock size={12} /> Last 24h
                     </button>
                     
-                    {uniqueTickers.map(t => (
+                    {uniqueTickers.map((t: string) => (
                         <button
                             key={t}
                             onClick={() => setFilterTicker(filterTicker === t ? null : t)}

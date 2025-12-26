@@ -197,7 +197,7 @@ class AiService {
                     const fileName = uploadedFile.name; 
                     mockService.emitLog('AI', 'INFO', `[Gemini Multi] Uploaded: ${fileUri}`);
 
-                    let fileState = uploadedFile.state;
+                    let fileState: string = uploadedFile.state ?? 'UNKNOWN';
                     let attempts = 0;
                     while (fileState === 'PROCESSING') {
                         if (attempts > 60) throw new Error("File processing timed out."); 
@@ -205,10 +205,10 @@ class AiService {
                         await new Promise(resolve => setTimeout(resolve, 2000));
                         
                         const refreshedFile = await ai.files.get({ name: fileName });
-                        
+
                         if (!refreshedFile) throw new Error("Failed to refresh file status.");
-                        
-                        fileState = refreshedFile.state;
+
+                        fileState = refreshedFile.state ?? fileState;
                         if (fileState === 'FAILED') throw new Error("Remote file processing failed.");
                         attempts++;
                     }

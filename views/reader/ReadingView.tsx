@@ -36,8 +36,8 @@ interface ReadingViewProps {
     setSettingsFocus: (focus: boolean) => void;
     showSettings: boolean;
     setShowSettings: (show: boolean) => void;
-    bottomSentinelRef: React.RefObject<HTMLDivElement>;
-    containerRef: React.RefObject<HTMLDivElement>;
+    bottomSentinelRef: React.RefObject<HTMLDivElement | null>;
+    containerRef: React.RefObject<HTMLDivElement | null>;
     pdfPagesRendered: number[];
     showCastButton?: boolean; // New Prop
 }

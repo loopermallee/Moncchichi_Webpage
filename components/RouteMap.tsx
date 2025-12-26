@@ -5,15 +5,16 @@ import { BusStopLocation, transportService, TrafficSegment } from '../services/t
 import { busService } from '../services/busService';
 import { soundService } from '../services/soundService';
 import { aiService } from '../services/aiService';
+import { ToastType } from './Toast';
 
 interface RouteMapProps {
-  serviceNo?: string; 
+  serviceNo?: string;
   stopId: string;
   stopName: string;
   destStopId?: string;
   onBack: () => void;
   userLocation: { lat: number; lng: number } | null;
-  onShowToast: (msg: string, type: 'success' | 'error' | 'info') => void;
+  onShowToast: (msg: string, type: ToastType) => void;
   onViewStop: (stop: BusStopLocation) => void;
 }
 
@@ -639,12 +640,21 @@ const RouteMap: React.FC<RouteMapProps> = ({ serviceNo, stopId, stopName, destSt
           }
           initMap(resolved.stops);
           const finalDestIndex = restoredIndices.length > 0 ? restoredIndices[restoredIndices.length - 1] : resolved.stops.length - 1;
-          const origin = resolved.stops[initialCurrentIndex];
-          const dest = resolved.stops[finalDestIndex];
-          if (origin?.lat && dest?.lat && initialCurrentIndex < finalDestIndex) {
-              const waypoints = resolved.stops.slice(initialCurrentIndex + 1, finalDestIndex).filter((_, i) => i % 5 === 0).map(s => ({ lat: s.lat || 0, lng: s.lng || 0 })).filter(p => p.lat !== 0);
-              setIsRoutesApiLoading(true);
-              transportService.getTrafficAwareRoute({ lat: origin.lat, lng: origin.lng }, { lat: dest.lat, lng: dest.lng }, waypoints).then(segments => {
+        const origin = resolved.stops[initialCurrentIndex];
+        const dest = resolved.stops[finalDestIndex];
+        const originLat = origin?.lat;
+        const originLng = origin?.lng;
+        const destLat = dest?.lat;
+        const destLng = dest?.lng;
+
+        if (originLat !== undefined && originLng !== undefined && destLat !== undefined && destLng !== undefined && initialCurrentIndex < finalDestIndex) {
+            const waypoints = resolved.stops
+                .slice(initialCurrentIndex + 1, finalDestIndex)
+                .filter((_, i) => i % 5 === 0)
+                .map(s => ({ lat: s.lat, lng: s.lng }))
+                .filter((p): p is { lat: number; lng: number } => p.lat !== undefined && p.lng !== undefined);
+            setIsRoutesApiLoading(true);
+            transportService.getTrafficAwareRoute({ lat: originLat, lng: originLng }, { lat: destLat, lng: destLng }, waypoints).then(segments => {
                   if (segments && segments.length > 0) {
                       setTrafficSegments(segments);
                       const mainPath = segments[0]?.path || [];

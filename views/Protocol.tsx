@@ -3,6 +3,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { bookService, Book } from '../services/bookService';
 import { protocolService, ProtocolMatch } from '../services/protocolService';
 import { X, BookOpen, Play } from 'lucide-react';
+import { ToastType } from '../components/Toast';
 
 import CodexHeader from '../components/codex/CodexHeader';
 import CodexSearchBar from '../components/codex/CodexSearchBar';
@@ -63,7 +64,7 @@ const SummaryOverlay = ({ book, onClose, onOpen }: { book: Book, onClose: () => 
     );
 };
 
-const Protocol: React.FC<{ onBack: () => void, onShowToast: (msg: string, type: any) => void }> = ({ onBack, onShowToast }) => {
+const Protocol: React.FC<{ onBack: () => void, onShowToast: (msg: string, type: ToastType) => void }> = ({ onBack, onShowToast }) => {
     // --- Data State ---
     const [files, setFiles] = useState<Book[]>([]);
     const [categories, setCategories] = useState<string[]>([]);

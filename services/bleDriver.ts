@@ -262,16 +262,18 @@ export class BleDriver {
         }
     }
 
-    // Web Bluetooth Path
-    if (this.rxChar) {
-        try {
-            // WriteWithoutResponse is generally preferred for throughput
-            await this.rxChar.writeValueWithoutResponse(data);
-            return true;
-        } catch (e: any) {
-            this.logCallback('ERROR', 'TX', `Write Error: ${e.message}`);
-            return false;
-        }
+        // Web Bluetooth Path
+        if (this.rxChar) {
+            try {
+                // WriteWithoutResponse is generally preferred for throughput
+                const safeBuffer = new ArrayBuffer(data.byteLength);
+                new Uint8Array(safeBuffer).set(new Uint8Array(data));
+                await this.rxChar.writeValueWithoutResponse(new Uint8Array(safeBuffer));
+                return true;
+            } catch (e: any) {
+                this.logCallback('ERROR', 'TX', `Write Error: ${e.message}`);
+                return false;
+            }
     }
     
     this.logCallback('WARN', 'BLE', 'Write skipped: No characteristic');
