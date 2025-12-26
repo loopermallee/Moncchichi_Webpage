@@ -1,3 +1,3 @@
-import handler from './ltaProxy';
+import handler from './ltaProxy.js';
 
 export default handler;

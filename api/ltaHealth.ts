@@ -1,4 +1,4 @@
-import { getEnv } from './_utils/env';
+import { getEnv } from './_utils/env.js';
 
 type VercelResponse = { status: (code: number) => { json: (body: any) => void } };
 

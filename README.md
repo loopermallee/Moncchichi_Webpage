@@ -46,3 +46,5 @@ These serverless functions run on Vercel:
 - `GET /api/nlbProxy` – proxies National Library Board requests when given a trusted `target` URL.
 
 > Keep your AI and transport keys on the server. Do **not** expose them via `VITE_*` environment variables.
+
+> Serverless note: Vercel runs `/api` handlers as ESM modules, so relative imports **must** include the `.js` extension (e.g., `./_utils/env.js`). This avoids runtime `ERR_MODULE_NOT_FOUND` errors.
