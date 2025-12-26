@@ -1,6 +1,6 @@
 
+import { fetchLTA } from '../src/services/serverApi';
 import { mockService } from './mockService';
-import { keyService } from './keyService';
 import { storageService } from './storageService';
 import { CHEEAUN_SERVICES, CHEEAUN_STOPS, CHEEAUN_ROUTES } from './cheeaunOfflineDb';
 import { aiService } from './aiService';
@@ -211,8 +211,7 @@ function parseStaticRoutes(): { [serviceNo: string]: string[][] } {
 }
 
 const BASE_URL = 'https://arrivelah2.busrouter.sg';
-const PROXY_URL = 'https://corsproxy.io/?'; 
-const LTA_BASE_URL = 'https://datamall2.mytransport.sg/ltaodataservice';
+const PROXY_URL = 'https://corsproxy.io/?';
 const FIRSTLAST_URL = 'https://raw.githubusercontent.com/cheeaun/sgbusdata/master/data/v1/firstlast.json';
 
 const STORAGE_KEY_FAV = 'moncchichi_fav_stops';
@@ -899,20 +898,11 @@ class BusService {
       const cleanNo = this.normalizeServiceNo(serviceNo);
       if (!cleanNo) throw new Error("Invalid Service No");
 
-      const apiKey = keyService.get('LTA');
-      if (!apiKey) throw new Error("No LTA Key");
-
       if (this.allStopsCache.length === 0) {
           try { await this.fetchAllBusStops(); } catch(e) {}
       }
 
-      const target = `${LTA_BASE_URL}/BusRoutes?ServiceNo=${cleanNo}`;
-      const proxy = `${PROXY_URL}${encodeURIComponent(target)}`;
-      
-      const res = await fetch(proxy, { headers: { 'AccountKey': apiKey, 'accept': 'application/json' } });
-      if (!res.ok) throw new Error("LTA Fetch Failed");
-      
-      const data = await res.json();
+      const data = await fetchLTA('BusRoutes', { query: { ServiceNo: cleanNo } });
       // STRIOT FILTER: LTA API might ignore ServiceNo param if empty or malformed
       const items = (data.value || []).filter((i: any) => i.ServiceNo === cleanNo);
       
@@ -1061,8 +1051,8 @@ class BusService {
               await this.fetchRouteFromBusRouter(cleanNo);
           } catch (e) {
               // Fallback to LTA if BusRouter fails
-              try { 
-                  if (keyService.get('LTA')) await this.fetchRouteFromLta(cleanNo);
+              try {
+                  await this.fetchRouteFromLta(cleanNo);
               } catch(e2) {}
           } finally {
               this.setRouteRefreshing(false);
@@ -1375,19 +1365,12 @@ class BusService {
   }
 
   private async fetchStopsFromLTA(): Promise<BusStopLocation[]> {
-      const apiKey = keyService.get('LTA');
-      if (!apiKey) throw new Error("No LTA Key");
-
       let stops: BusStopLocation[] = [];
       let skip = 0;
       let hasMore = true;
 
       while (hasMore) {
-          const target = `${LTA_BASE_URL}/BusStops?$skip=${skip}`;
-          const proxy = `${PROXY_URL}${encodeURIComponent(target)}`;
-          const res = await fetch(proxy, { headers: { 'AccountKey': apiKey, 'accept': 'application/json' } });
-          if (!res.ok) throw new Error("LTA Failed");
-          const data = await res.json();
+          const data = await fetchLTA('BusStops', { query: { $skip: skip } });
           const items = data.value || [];
           
           stops = stops.concat(items.map((i: any) => ({
@@ -1690,31 +1673,24 @@ class BusService {
   // --- Arrivals Fetching ---
 
   async getArrivals(stopId: string): Promise<BusStopData> {
-      const apiKey = keyService.get('LTA');
       let services: BusServiceData[] = [];
       let fetchSuccess = false;
 
       // 1. Try LTA if Key exists
-      if (apiKey) {
-          try {
-              const proxyUrl = `${PROXY_URL}${encodeURIComponent(`${LTA_BASE_URL}/BusArrivalv2?BusStopCode=${stopId}`)}`;
-              const res = await fetch(proxyUrl, { headers: { 'AccountKey': apiKey, 'accept': 'application/json' } });
-              if (res.ok) {
-                  const data = await res.json();
-                  if (data.Services) {
-                      services = data.Services.map((s: any) => ({
-                          serviceNo: s.ServiceNo,
-                          operator: s.Operator,
-                          next: this.mapLtaArrival(s.NextBus),
-                          subsequent: this.mapLtaArrival(s.NextBus2),
-                          subsequent2: this.mapLtaArrival(s.NextBus3)
-                      }));
-                      fetchSuccess = true;
-                  }
-              }
-          } catch (e) {
-              console.warn("LTA Fetch failed, trying fallback...", e);
+      try {
+          const data = await fetchLTA('BusArrivalv2', { query: { BusStopCode: stopId } });
+          if (data.Services) {
+              services = data.Services.map((s: any) => ({
+                  serviceNo: s.ServiceNo,
+                  operator: s.Operator,
+                  next: this.mapLtaArrival(s.NextBus),
+                  subsequent: this.mapLtaArrival(s.NextBus2),
+                  subsequent2: this.mapLtaArrival(s.NextBus3)
+              }));
+              fetchSuccess = true;
           }
+      } catch (e) {
+          console.warn("LTA Fetch failed, trying fallback...", e);
       }
 
       // 2. Fallback to Arrivelah if LTA failed or no key

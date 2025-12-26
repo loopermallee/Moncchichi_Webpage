@@ -1,6 +1,8 @@
 declare const process: any;
 
-type VercelRequest = { method?: string; body?: unknown };
+import { getEnv } from './_utils/env';
+
+type VercelRequest = { method?: string; body?: unknown } & { query?: Record<string, string | string[]>; url?: string };
 type VercelResponse = { status: (code: number) => { json: (body: any) => void } };
 
 function parseBody(req: VercelRequest): any {
@@ -43,11 +45,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return;
     }
 
-    const apiKey = process.env.OPENAI_API_KEY;
+    const apiKey = getEnv('OPENAI', 'OPENAI_API_KEY');
     if (!apiKey) {
         res.status(500).json({
-            error: 'Missing OPENAI_API_KEY',
-            hint: 'Set OPENAI_API_KEY in Vercel env vars for this environment and redeploy.',
+            error: 'Missing OPENAI key',
+            hint: 'Set OPENAI or OPENAI_API_KEY in server env vars.',
             vercelEnv: process.env.VERCEL_ENV ?? 'unknown',
             nodeEnv: process.env.NODE_ENV ?? 'unknown'
         });
@@ -56,6 +58,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const body = parseBody(req);
     const prompt = typeof body?.prompt === 'string' ? body.prompt : undefined;
+    const model = typeof body?.model === 'string' ? body.model : 'gpt-4o-mini';
+    const temperature = typeof body?.temperature === 'number' ? body.temperature : 0.7;
+    const system = typeof body?.systemInstruction === 'string' ? body.systemInstruction : undefined;
 
     if (!prompt) {
         res.status(400).json({ error: 'Missing prompt' });
@@ -63,13 +68,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     try {
-        const response = await fetch('https://api.openai.com/v1/responses', {
+        const messages: any[] = [];
+        if (system) messages.push({ role: 'system', content: system });
+        messages.push({ role: 'user', content: prompt });
+
+        const response = await fetch('https://api.openai.com/v1/chat/completions', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${apiKey}`
             },
-            body: JSON.stringify({ model: 'gpt-4o-mini', input: prompt, temperature: 0.7 })
+            body: JSON.stringify({ model, messages, temperature })
         });
 
         if (!response.ok) {

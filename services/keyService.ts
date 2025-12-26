@@ -34,10 +34,8 @@ class KeyService {
 
         // 2. Fallback to Environment Variables (if not set in storage/defaults)
         const env = import.meta.env;
-        if (!this.keys.GEMINI) this.keys.GEMINI = env.VITE_API_KEY || '';
-        if (!this.keys.OPENAI) this.keys.OPENAI = env.VITE_OPENAI_API_KEY || '';
-        if (!this.keys.LTA) this.keys.LTA = env.VITE_LTA_API_KEY || '';
-        if (!this.keys.NLB) this.keys.NLB = env.VITE_NLB_API_KEY || '';
+        if (!this.keys.NEA) this.keys.NEA = env.VITE_NEA_API_KEY || '';
+        if (!this.keys.GOOGLE_MAPS) this.keys.GOOGLE_MAPS = env.VITE_GOOGLE_MAPS || '';
     }
 
     public get(id: ApiId): string {

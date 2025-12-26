@@ -1,6 +1,6 @@
 
+import { fetchNLB } from '../src/services/serverApi';
 import { mockService } from './mockService';
-import { keyService } from './keyService';
 import { Book } from './bookService'; // Import Book type
 
 // --- CONFIG ---
@@ -61,93 +61,23 @@ export interface ExploreSection {
 class NlbService {
     private lastSearchTime = 0;
 
-    private getCredentials() {
-        const userKey = keyService.get('NLB');
-        const userApp = keyService.get('NLB_APP');
-
-        const missing = [];
-        if (!userKey || userKey === 'HARDCODED_IN_SERVICE') missing.push('API Key');
-        if (!userApp || userApp === 'HARDCODED_IN_SERVICE') missing.push('App Code');
-
-        if (missing.length > 0) {
-            mockService.emitLog('NLB', 'WARN', `Credentials missing in Titan Vault: ${missing.join(', ')}`);
-            // We return null here to let specific methods handle the "Missing" state explicitly
-            return null;
-        }
-        
-        mockService.emitLog('NLB', 'INFO', 'Using NLB credentials from Titan Vault');
-        return { appCode: userApp, apiKey: userKey };
+    private isCredentialError(message: string): boolean {
+        const lower = message.toLowerCase();
+        return lower.includes('credential') || lower.includes('missing nlb');
     }
 
     private async fetchFromApi(baseUrl: string, endpoint: string, params: Record<string, string> = {}) {
-        const credentials = this.getCredentials();
-        
-        if (!credentials) {
-            throw new Error("NLB_MISSING_CREDENTIALS");
-        }
-
-        const { appCode, apiKey } = credentials;
-
         const cleanBase = baseUrl.replace(/\/$/, '');
         const cleanEndpoint = endpoint.replace(/^\//, '');
         const url = new URL(`${cleanBase}/${cleanEndpoint}`);
-        
+
         Object.keys(params).forEach(key => url.searchParams.append(key, params[key]));
         
         const targetUrl = url.toString();
         const displayUrl = `${url.hostname}${url.pathname}`;
 
         mockService.emitLog('NLB', 'INFO', `Requesting: ${displayUrl}`);
-
-        const headers = {
-            'X-App-Code': appCode,
-            'X-API-Key': apiKey,
-            'accept': 'application/json'
-        };
-
-        const proxies = [
-            `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`,
-            `https://thingproxy.freeboard.io/fetch/${targetUrl}`,
-        ];
-
-        let lastError: any = null;
-
-        for (const proxyUrl of proxies) {
-            try {
-                const response = await fetch(proxyUrl, {
-                    method: 'GET',
-                    headers: headers
-                });
-
-                if (response.ok) {
-                    const json = await response.json();
-                    return json;
-                }
-                
-                mockService.emitLog('NLB', 'WARN', `HTTP ${response.status} from ${cleanEndpoint}`);
-
-                // Map Status Codes to Specific Errors
-                if (response.status >= 300 && response.status < 400) {
-                    throw new Error("NLB_REDIRECT");
-                }
-                if (response.status === 400) throw new Error("NLB_BAD_REQUEST");
-                if (response.status === 401 || response.status === 403) throw new Error("NLB_AUTH_FAILED");
-                if (response.status === 404) throw new Error("NLB_ENDPOINT_NOT_FOUND");
-                if (response.status === 429) throw new Error("NLB_RATE_LIMIT");
-                if (response.status >= 500) throw new Error("NLB_SERVICE_UNAVAILABLE");
-                
-                lastError = new Error(`HTTP ${response.status}`);
-            } catch (error: any) {
-                lastError = error;
-                // Don't retry if it's a specific logic error
-                if (error.message.includes("NLB_")) {
-                    break;
-                }
-            }
-        }
-
-        // Final Throw if loop finishes without return
-        throw lastError;
+        return fetchNLB(targetUrl);
     }
 
     // --- API METHODS ---
@@ -187,12 +117,13 @@ class NlbService {
                 address: lib.address || ""
             }));
         } catch (e: any) {
+            const message = e?.message || '';
             // CRITICAL: If credentials are missing, we still throw so the UI prompts to add them.
-            if (e.message === "NLB_MISSING_CREDENTIALS") throw new Error("MISSING_CREDENTIALS");
-            
+            if (this.isCredentialError(message)) throw new Error("MISSING_CREDENTIALS");
+
             // FALLBACK: For Redirects (Browser Preview issues) or other API failures, return Mock Data
             // This satisfies the requirement to "show information" even if the API is flaky in this env.
-            mockService.emitLog('NLB', 'WARN', `Live Locations failed (${e.message}). Serving cached list.`);
+            mockService.emitLog('NLB', 'WARN', `Live Locations failed (${message}). Serving cached list.`);
             return this.getMockLibraries();
         }
     }
@@ -229,11 +160,10 @@ class NlbService {
                 branch: "Check App"
             }));
         } catch (e: any) {
-            if (e.message === "NLB_BAD_REQUEST") throw new Error("Search query invalid, please adjust filters/query");
-            if (e.message === "NLB_ENDPOINT_NOT_FOUND") throw new Error("Service changed or endpoint unavailable");
-            if (e.message === "NLB_AUTH_FAILED") throw new Error("NLB credentials invalid/expired; update keys");
-            if (e.message === "NLB_MISSING_CREDENTIALS") throw new Error("Missing Credentials");
-            if (e.message === "NLB_RATE_LIMIT") throw new Error("NLB search is rate-limited. Please wait a few seconds.");
+            const message = e?.message || '';
+            if (message.toLowerCase().includes('bad request')) throw new Error("Search query invalid, please adjust filters/query");
+            if (message.toLowerCase().includes('credential')) throw new Error("Missing Credentials");
+            if (message.toLowerCase().includes('rate')) throw new Error("NLB search is rate-limited. Please wait a few seconds.");
             throw e;
         }
     }
@@ -266,28 +196,25 @@ class NlbService {
                 description: item.summary
             }));
         } catch (e: any) {
-            if (e.message === "NLB_BAD_REQUEST") throw new Error("Search query invalid, please adjust filters/query");
-            if (e.message === "NLB_RATE_LIMIT") throw new Error("NLB search is rate-limited. Please wait a few seconds.");
+            const message = e?.message || '';
+            if (message.toLowerCase().includes('bad request')) throw new Error("Search query invalid, please adjust filters/query");
+            if (message.toLowerCase().includes('rate')) throw new Error("NLB search is rate-limited. Please wait a few seconds.");
+            if (this.isCredentialError(message)) throw new Error("Missing Credentials");
             throw e;
         }
     }
 
     // Deprecated for direct "For You" in favor of getExploreContent, but kept for legacy/compatibility
     async getRecommendationsForUser(): Promise<NlbResult> {
-        // 1. Credentials Check
-        if (!this.getCredentials()) {
-            return { kind: 'missing-credentials', items: [] };
-        }
-
-        // 2. Patron ID Check (Configuration)
-        const patronId = localStorage.getItem('moncchichi_patron_id'); 
+        // 1. Patron ID Check (Configuration)
+        const patronId = localStorage.getItem('moncchichi_patron_id');
 
         if (!patronId) {
             // Do not call API
             return { kind: 'not-configured', items: [] };
         }
 
-        // 3. API Call
+        // 2. API Call
         try {
             const response = await this.fetchFromApi(URLS.RECOMMENDATION, 'GetRecommendationsForTitles', {
                 RecommendationType: 'book',
@@ -314,13 +241,13 @@ class NlbService {
             return { kind: 'ok', items: mappedItems };
 
         } catch (e: any) {
-            if (e.message === "NLB_AUTH_FAILED") return { kind: 'auth-failed', items: [] };
-            if (e.message === "NLB_ENDPOINT_NOT_FOUND") return { kind: 'endpoint-not-found', items: [] };
-            if (e.message === "NLB_BAD_REQUEST") return { kind: 'bad-request', items: [] };
-            if (e.message === "NLB_SERVICE_UNAVAILABLE" || e.message === "NLB_REDIRECT") return { kind: 'service-unavailable', items: [] };
-            
+            const message = e?.message || '';
+            if (this.isCredentialError(message)) return { kind: 'missing-credentials', items: [] };
+            if (message.toLowerCase().includes('not found')) return { kind: 'endpoint-not-found', items: [] };
+            if (message.toLowerCase().includes('bad request')) return { kind: 'bad-request', items: [] };
+
             // Fallback for network errors
-            mockService.emitLog('NLB', 'ERROR', `Recs Network Error: ${e.message}`);
+            mockService.emitLog('NLB', 'ERROR', `Recs Network Error: ${message}`);
             return { kind: 'service-unavailable', items: [] };
         }
     }
