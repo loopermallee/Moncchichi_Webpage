@@ -1,6 +1,5 @@
 import { GoogleGenAI } from "@google/genai";
 import { mockService } from "./mockService";
-import { keyService } from "./keyService";
 import { storageService } from "./storageService";
 
 export type AiProvider = 'GEMINI' | 'OPENAI';
@@ -74,19 +73,17 @@ class AiService {
         let resultText = "";
 
         // 2. Try OpenAI (gpt-4o-mini)
-        if (keyService.get('OPENAI')) {
-            try {
-                const res = await this.generateOpenAI({ 
-                    userPrompt: prompt, 
-                    model: 'gpt-4o-mini', 
-                    temperature: 0.3 
-                });
-                if (!res.error && res.text) {
-                    resultText = res.text;
-                }
-            } catch (e) {
-                mockService.emitLog('AI', 'WARN', `POI OpenAI failed, falling back to Gemini.`);
+        try {
+            const res = await this.generateOpenAI({
+                userPrompt: prompt,
+                model: 'gpt-4o-mini',
+                temperature: 0.3
+            });
+            if (!res.error && res.text) {
+                resultText = res.text;
             }
+        } catch (e) {
+            mockService.emitLog('AI', 'WARN', `POI OpenAI failed, falling back to Gemini.`);
         }
 
         // 3. Fallback to Gemini (3 Flash) if OpenAI failed or skipped for basic text task
@@ -397,24 +394,21 @@ class AiService {
     }
 
     private async generateOpenAI(options: GenerationOptions): Promise<AiResponse> {
-        const apiKey = keyService.get('OPENAI');
-        if (!apiKey) return { text: "No OpenAI Key", provider: 'OPENAI', error: "Missing Key" };
-
         try {
             mockService.emitLog('AI', 'INFO', `[OpenAI] Requesting...`);
-            const messages = [];
-            if (options.systemInstruction) messages.push({ role: 'system', content: options.systemInstruction });
-            messages.push({ role: 'user', content: options.userPrompt });
+            const prompt = options.systemInstruction
+                ? `${options.systemInstruction}\n\n${options.userPrompt}`
+                : options.userPrompt;
 
-            const res = await fetch('https://api.openai.com/v1/chat/completions', {
+            const res = await fetch('/api/openai', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
-                body: JSON.stringify({ model: options.model || 'gpt-4o-mini', messages, temperature: options.temperature ?? 0.7 })
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ prompt })
             });
 
             if (!res.ok) throw new Error(`Status ${res.status}`);
             const data = await res.json();
-            return { text: data.choices?.[0]?.message?.content || "", provider: 'OPENAI' };
+            return { text: data.text || "", provider: 'OPENAI' };
         } catch (e: any) {
             mockService.emitLog('AI', 'ERROR', `OpenAI Error: ${e.message}`);
             return { text: "Error", provider: 'OPENAI', error: e.message };
