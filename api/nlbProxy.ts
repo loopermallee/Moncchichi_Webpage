@@ -1,4 +1,4 @@
-import { getEnv } from './_utils/env';
+import { getEnv } from './_utils/env.js';
 
 type VercelRequest = { method?: string; query?: Record<string, string | string[]>; url?: string };
 type VercelResponse = { status: (code: number) => { json: (body: any) => void } };

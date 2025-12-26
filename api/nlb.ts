@@ -1,3 +1,3 @@
-import handler from './nlbProxy';
+import handler from './nlbProxy.js';
 
 export default handler;
