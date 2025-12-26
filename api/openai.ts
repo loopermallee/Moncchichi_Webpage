@@ -1,4 +1,7 @@
-import type { VercelRequest, VercelResponse } from '@vercel/node';
+declare const process: any;
+
+type VercelRequest = { method?: string; body?: unknown };
+type VercelResponse = { status: (code: number) => { json: (body: any) => void } };
 
 function parseBody(req: VercelRequest): any {
     if (req.body === undefined) return undefined;
@@ -36,13 +39,18 @@ function extractText(data: any): string {
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (req.method !== 'POST') {
-        res.status(405).json({ error: 'Method not allowed' });
+        res.status(405).json({ error: 'Use POST' });
         return;
     }
 
     const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) {
-        res.status(500).json({ error: 'Server configuration error' });
+        res.status(500).json({
+            error: 'Missing OPENAI_API_KEY',
+            hint: 'Set OPENAI_API_KEY in Vercel env vars for this environment and redeploy.',
+            vercelEnv: process.env.VERCEL_ENV ?? 'unknown',
+            nodeEnv: process.env.NODE_ENV ?? 'unknown'
+        });
         return;
     }
 
@@ -50,7 +58,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const prompt = typeof body?.prompt === 'string' ? body.prompt : undefined;
 
     if (!prompt) {
-        res.status(400).json({ error: 'Prompt is required' });
+        res.status(400).json({ error: 'Missing prompt' });
         return;
     }
 
@@ -64,17 +72,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             body: JSON.stringify({ model: 'gpt-4o-mini', input: prompt, temperature: 0.7 })
         });
 
-        const data = await response.json().catch(() => ({}));
-
         if (!response.ok) {
-            const message = typeof data?.error?.message === 'string' ? data.error.message : 'OpenAI request failed';
-            res.status(response.status).json({ error: message });
+            const errorText = await response.text().catch(() => '');
+            const details = errorText.slice(0, 2000);
+            console.error('OpenAI request failed', { status: response.status, details });
+            res.status(response.status).json({
+                error: 'OpenAI error',
+                status: response.status,
+                details
+            });
             return;
         }
 
+        const data = await response.json().catch(() => ({}));
         const text = extractText(data);
         res.status(200).json({ text });
     } catch (error) {
+        console.error('Error reaching OpenAI', error);
         res.status(500).json({ error: 'Unable to reach OpenAI' });
     }
 }
