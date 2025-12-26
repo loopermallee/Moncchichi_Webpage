@@ -1,12 +1,10 @@
-
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { Loader2, MapPin, Navigation, Clock, Flag, X, ArrowDown, Map as MapIcon, RotateCcw, AlertTriangle, ArrowLeft, ChevronUp, ChevronDown, Car, Zap, Turtle, AlertOctagon, Sparkles, Sword, Shield, Skull, Scroll, Tent, MessageSquare, Mail, Check, Radio, GraduationCap, ShoppingBag, Utensils, Trees, HeartPulse, Landmark, Info, Circle, Signal, Bus, Star, Search, RadioTower } from 'lucide-react';
-import { BusStopLocation, transportService, TrafficSegment } from './services/transportService';
-import { busService } from './services/busService';
-import { soundService } from './services/soundService';
-import { aiService } from './services/aiService';
+import { BusStopLocation, transportService, TrafficSegment } from '../services/transportService';
+import { busService } from '../services/busService';
+import { soundService } from '../services/soundService';
+import { aiService } from '../services/aiService';
 
-// Fixed: Defined missing RouteMapProps interface
 interface RouteMapProps {
   serviceNo?: string; 
   stopId: string;
@@ -18,7 +16,6 @@ interface RouteMapProps {
   onViewStop: (stop: BusStopLocation) => void;
 }
 
-// SVG Paths for Leaflet DivIcons
 const ICONS_SVG = {
     EDUCATION: `<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/></svg>`,
     SHOPPING: `<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>`,
@@ -169,32 +166,19 @@ const RouteMap: React.FC<RouteMapProps> = ({ serviceNo, stopId, stopName, destSt
   const isSingleStopMode = !serviceNo;
 
   useEffect(() => {
-    let isMounted = true;
-    const loadLeaflet = async () => {
-      if ((window as any).L) {
-        initData();
-        return;
-      }
-      try {
-        const link = document.createElement('link');
-        link.rel = 'stylesheet';
-        link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
-        document.head.appendChild(link);
-        const script = document.createElement('script');
-        script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
-        script.async = true;
-        script.onload = () => { if (isMounted) initData(); };
-        document.body.appendChild(script);
-      } catch (e) {
-        if (isMounted) setLoadError("Map engine failed to load.");
-      }
-    };
-    loadLeaflet();
+    // Leaflet is now loaded in index.html, so we can init immediately
+    const L = (window as any).L;
+    if (L) {
+      initData();
+    } else {
+      setLoadError("Map engine (Leaflet) not found in global scope.");
+    }
+
     if (!isSingleStopMode) {
         soundService.playNavigation();
     }
+    
     return () => {
-      isMounted = false;
       if (mapInstanceRef.current) {
         mapInstanceRef.current.remove();
         mapInstanceRef.current = null;
@@ -204,7 +188,6 @@ const RouteMap: React.FC<RouteMapProps> = ({ serviceNo, stopId, stopName, destSt
     };
   }, [serviceNo, stopId, destStopId]);
 
-  // --- ENHANCED Live Bus Radar ---
   const fetchLiveBusLocations = useCallback(async () => {
     if (!serviceNo || orderedStops.length === 0) return;
     const L = (window as any).L;
@@ -219,7 +202,6 @@ const RouteMap: React.FC<RouteMapProps> = ({ serviceNo, stopId, stopName, destSt
 
     try {
         const lastIdx = selectedStopIndices.length > 0 ? Math.max(...selectedStopIndices) : orderedStops.length - 1;
-        // Sample stops along the route to catch all buses
         const scanIndices = [];
         for (let i = realTimeCurrentIndex; i <= lastIdx; i += 4) {
             scanIndices.push(i);
@@ -227,9 +209,6 @@ const RouteMap: React.FC<RouteMapProps> = ({ serviceNo, stopId, stopName, destSt
         if (!scanIndices.includes(lastIdx)) scanIndices.push(lastIdx);
 
         const foundBusIds = new Set<string>();
-        const busMarkers: any[] = [];
-
-        // Parallel fetch for sampled stops
         const scanResults = await Promise.all(
             scanIndices.map(async (idx) => {
                 try {
@@ -280,7 +259,6 @@ const RouteMap: React.FC<RouteMapProps> = ({ serviceNo, stopId, stopName, destSt
                 }
             });
             
-            // Sync specific stop arrival if found
             if (svc.next) {
                 setStopArrivals(prev => ({ ...prev, [idx]: svc.next!.mins }));
             }
@@ -305,7 +283,6 @@ const RouteMap: React.FC<RouteMapProps> = ({ serviceNo, stopId, stopName, destSt
     return () => clearInterval(busPollInterval);
   }, [fetchLiveBusLocations, isSingleStopMode, serviceNo, orderedStops.length]);
 
-  // --- Live GPS Tracking ---
   useEffect(() => {
       let watchId: number;
       if (navigator.geolocation) {
@@ -325,7 +302,6 @@ const RouteMap: React.FC<RouteMapProps> = ({ serviceNo, stopId, stopName, destSt
       };
   }, []);
 
-  // --- Live Timing Prediction (Progressive Fetch) ---
   const fetchProgressively = useCallback(async () => {
       if (isSingleStopMode || !serviceNo || orderedStops.length === 0) return;
       let baseTime = 0;
@@ -380,7 +356,6 @@ const RouteMap: React.FC<RouteMapProps> = ({ serviceNo, stopId, stopName, destSt
       return () => clearInterval(intervalId);
   }, [fetchProgressively]);
 
-  // --- Traffic Light Cycle Simulation ---
   useEffect(() => {
       trafficIntervalRef.current = setInterval(() => {
           setTrafficLights(prevLights => prevLights.map(light => {
@@ -397,7 +372,6 @@ const RouteMap: React.FC<RouteMapProps> = ({ serviceNo, stopId, stopName, destSt
       };
   }, []);
 
-  // --- Auto-scroll to current stop on load ---
   useEffect(() => {
       if (orderedStops.length > 0 && realTimeCurrentIndex > 0) {
           setTimeout(() => {
@@ -407,7 +381,6 @@ const RouteMap: React.FC<RouteMapProps> = ({ serviceNo, stopId, stopName, destSt
       }
   }, [orderedStops.length]);
 
-  // --- Update Markers & Polyline Segments ---
   useEffect(() => {
       const L = (window as any).L;
       if (!mapInstanceRef.current || !L) return;
@@ -758,22 +731,22 @@ const RouteMap: React.FC<RouteMapProps> = ({ serviceNo, stopId, stopName, destSt
 
       if (isSelected) {
           newIndices = selectedStopIndices.filter(i => i !== index);
-          // If we are clearing everything, also remove the boarding stop waypoint
           if (newIndices.length === 0 && serviceNo) {
               transportService.clearRouteWaypoints(serviceNo);
               setSelectedStopIndices([]);
               return;
           }
       } else {
-          // FIX: Automatically include the BOARDING stop (Origin) if this is the first selection
           if (selectedStopIndices.length === 0 && serviceNo) {
               const boardingStop = orderedStops[realTimeCurrentIndex];
               const currentWaypoints = transportService.getRouteWaypoints(serviceNo);
               if (boardingStop && !currentWaypoints.includes(boardingStop.id)) {
                   transportService.toggleRouteWaypoint(serviceNo, boardingStop.id);
               }
+              newIndices = [realTimeCurrentIndex, index].sort((a, b) => a - b);
+          } else {
+              newIndices = [...selectedStopIndices, index].sort((a, b) => a - b);
           }
-          newIndices = [...selectedStopIndices, index].sort((a, b) => a - b);
           soundService.playInteraction();
       }
 
@@ -910,7 +883,7 @@ const RouteMap: React.FC<RouteMapProps> = ({ serviceNo, stopId, stopName, destSt
             ) : trafficHeader ? (
                 <div className="animate-in fade-in slide-in-from-top-2">
                      <div className={`text-xs font-bold uppercase tracking-widest mb-1 flex items-center justify-end gap-1.5 ${trafficHeader.status === 'HEAVY' ? 'text-red-400' : (trafficHeader.status === 'MODERATE' ? 'text-yellow-400' : 'text-green-400')}`}>{trafficHeader.status === 'HEAVY' ? <Skull size={12} /> : (trafficHeader.status === 'MODERATE' ? <Shield size={12} /> : <Sword size={12} />)}{trafficHeader.title}</div>
-                     <div className="text-[9px] font-mono text-moncchichi-textSec font-bold mb-1 opacity-80 uppercase whitespace-normal break-words">{trafficHeader.roads}</div>
+                     <div className="text-[9px] font-mono text-moncchichi-textSec font-bold mb-1 uppercase whitespace-normal break-words">{trafficHeader.roads}</div>
                      <div className="text-[10px] text-moncchichi-text leading-tight font-serif italic opacity-90 whitespace-normal break-words">"{trafficHeader.desc}"</div>
                 </div>
             ) : (
