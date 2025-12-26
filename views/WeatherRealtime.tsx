@@ -7,8 +7,9 @@ import { ICONS } from '../constants';
 import { RotateCcw, ChevronDown, ChevronUp, MapPin, AlertTriangle, Wind, Droplets, Sun, CloudLightning, Thermometer, Activity, Sparkles, X, CloudRain, Cloud, Clock, Zap, Flame, Waves, CalendarDays, ExternalLink, Newspaper, Loader2, Info, Lightbulb, Navigation, ArrowDown } from 'lucide-react';
 import { mockService } from '../services/mockService';
 import { soundService } from '../services/soundService';
+import { ToastType } from '../components/Toast';
 
-const WeatherRealtime: React.FC<{ onBack: () => void, onShowToast: (msg: string, type: any) => void }> = ({ onBack, onShowToast }) => {
+const WeatherRealtime: React.FC<{ onBack: () => void, onShowToast: (msg: string, type: ToastType) => void }> = ({ onBack, onShowToast }) => {
     const [weather, setWeather] = useState<UnifiedWeatherReport | null>(null);
     const [loading, setLoading] = useState(true);
     const [isInsightLoading, setIsInsightLoading] = useState(false); // New state for async AI

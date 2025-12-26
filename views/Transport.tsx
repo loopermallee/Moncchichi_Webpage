@@ -8,6 +8,7 @@ import { soundService } from '../services/soundService';
 import { Accessibility, Search, Star, ChevronDown, ChevronUp, MapPin, RotateCcw, Edit2, Check, BusFront, TrainFront, Users, AlertTriangle, Loader2, RefreshCw, WifiOff, Lock, ChevronsUp, ChevronsDown, Eye, HelpCircle, Ghost, XCircle, Clock, X, Map as MapIcon, MoreHorizontal, Flag, Database, Trash2, Download, Route, Moon, Calendar, Zap, Plus, Lightbulb, Sun, Sunrise, Sunset, Bed, Gauge, ArrowRight, Car } from 'lucide-react';
 import RouteMap from '../components/RouteMap'; // Unified Map Component
 import { motion, AnimatePresence } from 'framer-motion';
+import { ToastType } from '../components/Toast';
 
 interface StopWithArrivals extends BusStopLocation {
     services: BusServiceData[];
@@ -19,7 +20,7 @@ type TransportMode = 'BUS' | 'TRAIN';
 
 interface TransportProps {
   onBack: () => void;
-  onShowToast: (message: string, type: 'success' | 'error' | 'info') => void;
+  onShowToast: (message: string, type: ToastType) => void;
 }
 
 // --- Extracted Components to prevent Re-render Loops ---
@@ -1346,27 +1347,35 @@ const Transport: React.FC<TransportProps> = ({ onBack, onShowToast }) => {
       if (isRefreshing && !forceLocation) return;
       setIsRefreshing(true);
       
-      try {
-          // 1. Get Location (if needed or forced)
-          let loc = location;
-          if (forceLocation || !loc) {
-              setIsLocating(true);
-              const l = await locationService.getLocation();
-              loc = { lat: l.lat, lng: l.lng };
+        try {
+            // 1. Get Location (if needed or forced)
+            let loc = location;
+            if (forceLocation || !loc) {
+                setIsLocating(true);
+                const l = await locationService.getLocation();
+                loc = { lat: l.lat, lng: l.lng };
               
               // OPTIMIZATION: Only update state if location actually changed
-              setLocation(prev => {
-                  if (prev && prev.lat === loc.lat && prev.lng === loc.lng) return prev;
-                  return loc;
-              });
+                setLocation(prev => {
+                    if (!loc) return prev;
+                    if (prev && prev.lat === loc.lat && prev.lng === loc.lng) return prev;
+                    return loc;
+                });
               
               if (l.isDefault) {
                   onShowToast("Using default location (GPS unavailable)", "info");
               }
               
-              transportService.getAddress(l.lat, l.lng).then(setLocationName);
-              setIsLocating(false);
-          }
+                transportService.getAddress(l.lat, l.lng).then(setLocationName);
+                setIsLocating(false);
+            }
+
+            if (!loc) {
+                onShowToast("Location unavailable", "error");
+                setIsRefreshing(false);
+                setIsLocating(false);
+                return;
+            }
 
           if (transportMode === 'BUS') {
               if (viewMode === 'FAVORITES') {

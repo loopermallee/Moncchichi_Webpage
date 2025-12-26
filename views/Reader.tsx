@@ -5,6 +5,7 @@ import { bookService, Book, Chapter, DiscoverySection } from '../services/bookSe
 import { nlbService, NLBLibrary, NLBItem, ExploreSection } from '../services/nlbService';
 import { protocolService } from '../services/protocolService';
 import { Search, BookOpen, ChevronLeft, Sparkles, Building2, Globe, Library, Upload, Tv, Check, ChevronDown, ChevronUp } from 'lucide-react';
+import { ToastType } from '../components/Toast';
 
 // Imported Components
 import { CuteLoading, BookSkeleton } from '../components/reader/ReaderShared';
@@ -42,7 +43,7 @@ const NLB_GENRES = [
     { label: 'Children', query: 'Children' },
 ];
 
-export default function Reader({ onBack, onShowToast }: { onBack: () => void, onShowToast?: (msg: string, type: string) => void }) {
+export default function Reader({ onBack, onShowToast }: { onBack: () => void, onShowToast?: (msg: string, type: ToastType) => void }) {
   // State
   const [mode, setMode] = useState<ReaderMode>('HOME');
   const [previousMode, setPreviousMode] = useState<ReaderMode>('HOME'); 
